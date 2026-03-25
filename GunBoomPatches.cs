@@ -16,55 +16,53 @@ namespace GunBoom
             var equipment = player.equipment;
             var gunAsset = equipment.asset as ItemGunAsset;
             
-            // Если в руках не огнестрел — игнорируем
             if (gunAsset == null) return true;
 
-            // Ищем конфиг для этого ID оружия
             var config = GunBoomPlugin.Instance.GetConfig(gunAsset.id);
             if (config == null) return true;
 
-            // Получаем предмет из инвентаря для проверки качества
             byte page = equipment.equippedPage;
             byte x = equipment.equipped_x;
             byte y = equipment.equipped_y;
             byte index = player.inventory.getIndex(page, x, y);
             ItemJar jar = player.inventory.getItem(page, index);
             
-            // Защита от Null (если предмет исчез в момент выстрела)
             if (jar == null || jar.item == null) return true; 
 
-            // Если качество выше опасного порога — стреляем штатно
             if (jar.item.quality > config.MinQuality) return true;
 
             float roll = UnityEngine.Random.value;
 
-            // Проверка шанса взрыва
             if (roll < config.ExplosionChance)
             {
                 CSteamID sID = player.channel.owner.playerID.steamID;
 
-                // --- НОВОЕ: Спавн визуального эффекта №54 ---
-                // Расчитываем позицию на уровне рук/груди (стандартная высота игрока ~1.8м)
-                // player.transform.position находится в ногах, добавляем ~1.2м по вертикали.
+                // Эффект взрыва
                 Vector3 explosionPosition = player.transform.position + new Vector3(0f, 1.2f, 0f);
+                EffectManager.sendEffect(54, 80, explosionPosition);
                 
-                // Спавним эффект (стандартный взрыв гранаты)
-                // 1.0f - это радиус/скейл эффекта, Vector3.up - направление.
-                EffectManager.sendEffect(54, 80, explosionPosition, Vector3.up);
-                // ------------------------------------------
-                
-                // Наносим урон игроку (вынесено для старых компиляторов CI/CD)
+                // Урон игроку
                 EPlayerKill kill; 
                 player.life.askDamage(50, Vector3.up, EDeathCause.GUN, ELimb.SKULL, sID, out kill);
                 
-                // Спавним предмет-хлам на месте игрока
+                // Спавн металлолома
                 ItemManager.dropItem(new Item(config.ScrapItemID, true), player.transform.position, true, true, true);
                 
-                // Принудительно убираем оружие из рук и удаляем его
-                equipment.dequip();
+                // --- ИСПРАВЛЕНИЕ БАГА ---
+                // Мы убрали equipment.dequip();
+                // Просто удаляем предмет. Unturned сам поймет, что предмет был в руках,
+                // уберет его анимацию и корректно очистит инвентарь без создания "призраков".
                 player.inventory.removeItem(page, index);
                 
-                return false; // Отменяем сам выстрел
+                // Контрольный выстрел: принудительно говорим всем клиентам вокруг, 
+                // что слот на спине (1 - основной, 2 - вторичный) теперь пуст.
+                if (page == 1 || page == 2)
+                {
+                    player.equipment.sendSlot(page);
+                }
+                // ------------------------
+                
+                return false; 
             }
 
             return true;
