@@ -6,16 +6,24 @@ using System;
 
 namespace GunBoom
 {
-    // ПАТЧ 1: Логика стрельбы, взрывов и заклиниваний
-    [HarmonyPatch(typeof(UseableGun), "fire")]
-    public class Patch_GunFire
+    [HarmonyPatch]
+    public class GunBoomPatches
     {
+        // --- ЛОГИКА СТРЕЛЬБЫ ---
+        [HarmonyPatch(typeof(UseableGun), "fire")]
         [HarmonyPrefix]
-        static bool Prefix(UseableGun __instance)
+        static bool GunFirePrefix(UseableGun __instance)
         {
             Player player = __instance.player;
             CSteamID sID = player.channel.owner.playerID.steamID;
             
+            // 1. Проверка на клин (блокируем выстрел)
+            if (GunBoomPlugin.Instance.JammedPlayers.Contains(sID))
+            {
+                // Можно добавить звук "осечки" здесь
+                return false; 
+            }
+
             var equipment = player.equipment;
             var gunAsset = equipment.asset as ItemGunAsset;
             if (gunAsset == null) return true;
@@ -23,70 +31,57 @@ namespace GunBoom
             var config = GunBoomPlugin.Instance.GetConfig(gunAsset.id);
             if (config == null) return true;
 
-            byte[] state = equipment.state;
-            ushort ammoCount = BitConverter.ToUInt16(state, 8);
-
-            // Сброс клина при пустом магазине
-            if (ammoCount == 0)
-            {
-                GunBoomPlugin.Instance.JammedPlayers.Remove(sID);
-            }
-
-            if (GunBoomPlugin.Instance.JammedPlayers.Contains(sID))
-            {
-                return false; 
-            }
-
-            // Получаем предмет из инвентаря
+            // 2. Получаем данные о предмете
             byte page = equipment.equippedPage;
             byte x = equipment.equipped_x;
             byte y = equipment.equipped_y;
             byte index = player.inventory.getIndex(page, x, y);
             ItemJar jar = player.inventory.getItem(page, index);
             
-            if (jar == null || jar.item == null) return true; 
-
-            byte quality = jar.item.quality;
-            if (quality > config.MinQuality) return true;
+            if (jar == null) return true;
+            if (jar.item.quality > config.MinQuality) return true;
 
             float roll = UnityEngine.Random.value;
+            byte[] state = equipment.state;
+            ushort ammo = BitConverter.ToUInt16(state, 8);
 
-            // 1. ВЗРЫВ
+            // 3. РАНДОМ ПОЛОМОК
+            // Взрыв (приоритет 1)
             if (config.EnableExplosion && roll < config.ExplosionChance)
             {
                 EPlayerKill kill;
                 player.life.askDamage(50, Vector3.up, EDeathCause.GUN, ELimb.SKULL, sID, out kill);
                 ItemManager.dropItem(new Item(config.ScrapItemID, true), player.transform.position, true, true, true);
+                
                 equipment.dequip();
                 player.inventory.removeItem(page, index);
                 return false;
             }
 
-            // 2. ВЫПАДЕНИЕ МАГАЗИНА
+            // Выпадение магазина (приоритет 2)
             if (config.EnableMagDrop && roll < (config.ExplosionChance + config.MagDropChance))
             {
                 ushort magID = BitConverter.ToUInt16(state, 13);
                 if (magID != 0)
                 {
-                    Item magItem = new Item(magID, (byte)ammoCount, state[12]); 
+                    Item magItem = new Item(magID, (byte)ammo, state[12]);
                     ItemManager.dropItem(magItem, player.transform.position, true, true, true);
-                    state[8] = 0; 
-                    state[9] = 0; 
-                    state[13] = 0; 
-                    state[14] = 0;
+                    
+                    state[8] = 0; state[9] = 0; // Патроны в 0
+                    state[13] = 0; state[14] = 0; // Магазин удален
                     equipment.sendUpdateState();
-                    return false;
                 }
+                return false;
             }
 
-            // 3. ЗАКЛИНИВАНИЕ
+            // Заклинивание (приоритет 3)
             if (config.EnableJam && roll < (config.ExplosionChance + config.MagDropChance + config.JamChance))
             {
                 GunBoomPlugin.Instance.JammedPlayers.Add(sID);
                 return false;
             }
 
-            // 4. ЗАПАДАНИЕ СПУСКА (Runaway)
+            // Западание спуска (приоритет 4)
             if (config.EnableRunaway && roll < (config.ExplosionChance + config.MagDropChance + config.JamChance + config.RunawayChance))
             {
                 GunBoomPlugin.Instance.RunawayPlayers.Add(sID);
@@ -94,43 +89,48 @@ namespace GunBoom
 
             return true;
         }
-    }
 
-    // ПАТЧ 2: Эмуляция зажатой клавиши через UseableGun.tick
-    // Это заменяет проблемный патч PlayerInput.Update
-    [HarmonyPatch(typeof(UseableGun), "tick")]
-    public class Patch_RunawayTick
-    {
+        // --- ИСПРАВЛЕНИЕ ЗАПАДАНИЯ (RUNAWAY) ---
+        [HarmonyPatch(typeof(UseableGun), "tick")]
         [HarmonyPrefix]
-        static void Prefix(UseableGun __instance)
+        static void GunTickPrefix(UseableGun __instance)
         {
             CSteamID sID = __instance.player.channel.owner.playerID.steamID;
-
             if (GunBoomPlugin.Instance.RunawayPlayers.Contains(sID))
             {
-                // Если патроны кончились — сбрасываем эффект
+                // Если магазин пуст, прекращаем автоматическую стрельбу
                 if (BitConverter.ToUInt16(__instance.player.equipment.state, 8) == 0)
                 {
                     GunBoomPlugin.Instance.RunawayPlayers.Remove(sID);
                     return;
                 }
-
-                // Взламываем ввод: заставляем игру думать, что левая кнопка мыши нажата
+                // Симулируем нажатие ЛКМ
                 __instance.player.input.keys[0] = true;
             }
         }
-    }
 
-    // ПАТЧ 3: Очистка при убирании оружия
-    [HarmonyPatch(typeof(PlayerEquipment), "dequip")]
-    public class Patch_EquipmentDequip
-    {
+        // --- ОЧИСТКА КЛИНА ПРИ ПЕРЕЗАРЯДКЕ ---
+        [HarmonyPatch(typeof(UseableGun), "askReload")]
+        [HarmonyPrefix]
+        static void GunReloadPrefix(UseableGun __instance)
+        {
+            CSteamID sID = __instance.player.channel.owner.playerID.steamID;
+            // Перезарядка — лучший способ прочистить заклинивший механизм
+            if (GunBoomPlugin.Instance.JammedPlayers.Contains(sID))
+            {
+                GunBoomPlugin.Instance.JammedPlayers.Remove(sID);
+            }
+        }
+
+        // --- СБРОС ПРИ СМЕНЕ ОРУЖИЯ ---
+        [HarmonyPatch(typeof(PlayerEquipment), "dequip")]
         [HarmonyPostfix]
-        static void Postfix(PlayerEquipment __instance)
+        static void DequipPostfix(PlayerEquipment __instance)
         {
             if (__instance.player == null) return;
             CSteamID sID = __instance.player.channel.owner.playerID.steamID;
             GunBoomPlugin.Instance.RunawayPlayers.Remove(sID);
+            // Клин НЕ удаляем, чтобы игрок мучился, пока не перезарядит его
         }
     }
 }
