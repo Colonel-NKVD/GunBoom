@@ -17,7 +17,7 @@ public class WeaponConfig
     // Взрыв оружия
     public bool EnableExplosion;
     public float ExplosionChance;
-    public ushort ExplosionSpawnItemID; // ID предмета (например, металлолома), который появится
+    public ushort ScrapItemID; // ID предмета (например, металлолома), который появится
 
     // Западание спуска (Runaway Gun)
     public bool EnableRunaway;
