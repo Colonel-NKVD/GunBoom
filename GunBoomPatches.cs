@@ -50,7 +50,7 @@ namespace GunBoom
                 
                 // Спавним эффект (стандартный взрыв гранаты)
                 // 1.0f - это радиус/скейл эффекта, Vector3.up - направление.
-                EffectManager.sendEffect(54, 1.0f, explosionPosition, Vector3.up);
+                EffectManager.sendEffect(54, 80, explosionPosition, Vector3.up);
                 // ------------------------------------------
                 
                 // Наносим урон игроку (вынесено для старых компиляторов CI/CD)
