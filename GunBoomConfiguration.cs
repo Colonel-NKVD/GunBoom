@@ -9,7 +9,8 @@ namespace GunBoom
         public string LoadMessage;
         public List<WeaponConfig> Weapons;
 
-        public void Defaults()
+        // ИСПРАВЛЕНО: RocketMod ищет именно LoadDefaults()
+        public void LoadDefaults()
         {
             LoadMessage = "GunBoom Malfunctions Loaded!";
             Weapons = new List<WeaponConfig>
@@ -44,20 +45,16 @@ namespace GunBoom
         [XmlAttribute("MinQual")]
         public byte MinQuality;
 
-        // Взрыв
         public bool EnableExplosion;
         public float ExplosionChance;
         public ushort ScrapItemID; 
 
-        // Выпадение магазина
         public bool EnableMagDrop;
         public float MagDropChance;
 
-        // Заклинивание
         public bool EnableJam;
         public float JamChance;
 
-        // Западание спуска
         public bool EnableRunaway;
         public float RunawayChance;
     }
