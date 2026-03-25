@@ -11,7 +11,6 @@ namespace GunBoom
         public static GunBoomPlugin Instance;
         private Harmony harmony;
         
-        // Используем HashSet для быстрой проверки состояний
         public HashSet<CSteamID> JammedPlayers = new HashSet<CSteamID>();
         public HashSet<CSteamID> RunawayPlayers = new HashSet<CSteamID>();
 
@@ -21,22 +20,27 @@ namespace GunBoom
             harmony = new Harmony("com.ironandmud.gunboom");
             harmony.PatchAll();
             
-            Player.onPlayerDisconnected += OnPlayerDisconnected;
-            Rocket.Core.Logging.Logger.Log("GunBoom Ready for 1917+ warfare.");
+            // ИСПРАВЛЕНО: Используем Provider.onEnemyDisconnected вместо Player
+            Provider.onEnemyDisconnected += OnPlayerDisconnected;
+            
+            Rocket.Core.Logging.Logger.Log("GunBoom: Weapon malfunctions initialized.");
         }
 
         protected override void Unload()
         {
-            Player.onPlayerDisconnected -= OnPlayerDisconnected;
+            Provider.onEnemyDisconnected -= OnPlayerDisconnected;
             harmony.UnpatchAll();
             JammedPlayers.Clear();
             RunawayPlayers.Clear();
         }
 
-        private void OnPlayerDisconnected(Player player)
+        // Аргумент изменен на SteamPlayer для соответствия событию
+        private void OnPlayerDisconnected(SteamPlayer player)
         {
-            JammedPlayers.Remove(player.channel.owner.playerID.steamID);
-            RunawayPlayers.Remove(player.channel.owner.playerID.steamID);
+            if (player == null) return;
+            CSteamID sID = player.playerID.steamID;
+            JammedPlayers.Remove(sID);
+            RunawayPlayers.Remove(sID);
         }
 
         public WeaponConfig GetConfig(ushort id)
