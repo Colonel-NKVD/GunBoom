@@ -9,29 +9,17 @@ namespace GunBoom
         public string LoadMessage;
         public List<WeaponConfig> Weapons;
 
-        // ИСПРАВЛЕНО: RocketMod ищет именно LoadDefaults()
         public void LoadDefaults()
         {
-            LoadMessage = "GunBoom Malfunctions Loaded!";
+            LoadMessage = "GunBoom: Simplified Explosion Mode Loaded!";
             Weapons = new List<WeaponConfig>
             {
                 new WeaponConfig
                 {
-                    WeaponID = 122, // Zubeknakov
-                    MinQuality = 15,
-                    
-                    EnableExplosion = true,
-                    ExplosionChance = 0.01f,
-                    ScrapItemID = 67, // Metal Scrap
-                    
-                    EnableMagDrop = true,
-                    MagDropChance = 0.05f,
-                    
-                    EnableJam = true,
-                    JamChance = 0.10f,
-                    
-                    EnableRunaway = true,
-                    RunawayChance = 0.03f
+                    WeaponID = 122, // ID оружия
+                    MinQuality = 15, // Порог износа, ниже которого возможен взрыв
+                    ExplosionChance = 0.05f, // Шанс 5%
+                    ScrapItemID = 67 // ID выпадающего предмета (например, Metal Scrap)
                 }
             };
         }
@@ -45,17 +33,7 @@ namespace GunBoom
         [XmlAttribute("MinQual")]
         public byte MinQuality;
 
-        public bool EnableExplosion;
         public float ExplosionChance;
         public ushort ScrapItemID; 
-
-        public bool EnableMagDrop;
-        public float MagDropChance;
-
-        public bool EnableJam;
-        public float JamChance;
-
-        public bool EnableRunaway;
-        public float RunawayChance;
     }
 }
