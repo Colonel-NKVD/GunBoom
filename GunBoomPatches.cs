@@ -37,7 +37,7 @@ namespace GunBoom
                 return false; 
             }
 
-            // Получаем предмет напрямую из инвентаря для проверки качества
+            // Получаем предмет из инвентаря
             byte page = equipment.equippedPage;
             byte x = equipment.equipped_x;
             byte y = equipment.equipped_y;
@@ -51,17 +51,14 @@ namespace GunBoom
 
             float roll = UnityEngine.Random.value;
 
-            // 1. ВЗРЫВ (Критическая поломка)
+            // 1. ВЗРЫВ
             if (config.EnableExplosion && roll < config.ExplosionChance)
             {
-                EPlayerKill kill; // Объявляем заранее для совместимости с MSBuild
+                EPlayerKill kill;
                 player.life.askDamage(50, Vector3.up, EDeathCause.GUN, ELimb.SKULL, sID, out kill);
-                
                 ItemManager.dropItem(new Item(config.ScrapItemID, true), player.transform.position, true, true, true);
-                
                 equipment.dequip();
                 player.inventory.removeItem(page, index);
-                
                 return false;
             }
 
@@ -73,26 +70,23 @@ namespace GunBoom
                 {
                     Item magItem = new Item(magID, (byte)ammoCount, state[12]); 
                     ItemManager.dropItem(magItem, player.transform.position, true, true, true);
-
-                    // Обнуляем данные о магазине в массиве state
                     state[8] = 0; 
                     state[9] = 0; 
                     state[13] = 0; 
                     state[14] = 0;
-                    
                     equipment.sendUpdateState();
                     return false;
                 }
             }
 
-            // 3. ЗАКЛИНИВАНИЕ (Jam)
+            // 3. ЗАКЛИНИВАНИЕ
             if (config.EnableJam && roll < (config.ExplosionChance + config.MagDropChance + config.JamChance))
             {
                 GunBoomPlugin.Instance.JammedPlayers.Add(sID);
                 return false;
             }
 
-            // 4. ЗАПАДАНИЕ СПУСКА (Runaway Gun)
+            // 4. ЗАПАДАНИЕ СПУСКА (Runaway)
             if (config.EnableRunaway && roll < (config.ExplosionChance + config.MagDropChance + config.JamChance + config.RunawayChance))
             {
                 GunBoomPlugin.Instance.RunawayPlayers.Add(sID);
@@ -102,38 +96,39 @@ namespace GunBoom
         }
     }
 
-    // ПАТЧ 2: Эмуляция зажатой клавиши для Runaway Gun
-    [HarmonyPatch(typeof(PlayerInput), "Update")]
-    public class Patch_RunawayInput
+    // ПАТЧ 2: Эмуляция зажатой клавиши через UseableGun.tick
+    // Это заменяет проблемный патч PlayerInput.Update
+    [HarmonyPatch(typeof(UseableGun), "tick")]
+    public class Patch_RunawayTick
     {
-        [HarmonyPostfix]
-        static void Postfix(PlayerInput __instance)
+        [HarmonyPrefix]
+        static void Prefix(UseableGun __instance)
         {
             CSteamID sID = __instance.player.channel.owner.playerID.steamID;
 
             if (GunBoomPlugin.Instance.RunawayPlayers.Contains(sID))
             {
-                var equip = __instance.player.equipment;
-                // Стреляем только пока есть патроны и в руках огнестрел
-                if (equip.asset is ItemGunAsset && BitConverter.ToUInt16(equip.state, 8) > 0)
-                {
-                    __instance.keys[0] = true; // Принудительно ставим флаг стрельбы
-                }
-                else
+                // Если патроны кончились — сбрасываем эффект
+                if (BitConverter.ToUInt16(__instance.player.equipment.state, 8) == 0)
                 {
                     GunBoomPlugin.Instance.RunawayPlayers.Remove(sID);
+                    return;
                 }
+
+                // Взламываем ввод: заставляем игру думать, что левая кнопка мыши нажата
+                __instance.player.input.keys[0] = true;
             }
         }
     }
 
-    // ПАТЧ 3: Сброс состояний при убирании предмета
+    // ПАТЧ 3: Очистка при убирании оружия
     [HarmonyPatch(typeof(PlayerEquipment), "dequip")]
     public class Patch_EquipmentDequip
     {
         [HarmonyPostfix]
         static void Postfix(PlayerEquipment __instance)
         {
+            if (__instance.player == null) return;
             CSteamID sID = __instance.player.channel.owner.playerID.steamID;
             GunBoomPlugin.Instance.RunawayPlayers.Remove(sID);
         }
