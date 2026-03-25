@@ -2,7 +2,7 @@ using Rocket.Core.Plugins;
 using HarmonyLib;
 using Steamworks;
 using System.Collections.Generic;
-using SDG.Unturned;
+using SDG.Unturned; // Убедись, что это здесь
 
 namespace GunBoom
 {
@@ -11,7 +11,6 @@ namespace GunBoom
         public static GunBoomPlugin Instance;
         private Harmony harmony;
 
-        // Состояния игроков
         public HashSet<CSteamID> JammedPlayers = new HashSet<CSteamID>();
         public HashSet<CSteamID> RunawayPlayers = new HashSet<CSteamID>();
 
@@ -21,6 +20,7 @@ namespace GunBoom
             harmony = new Harmony("com.gunboom.malfunctions");
             harmony.PatchAll();
             
+            // Используем полное имя типа, чтобы компилятор точно его нашел
             PlayerEquipment.OnEquipRequested_Global += OnEquip;
         }
 
@@ -31,9 +31,9 @@ namespace GunBoom
             Instance = null;
         }
 
-        private void OnEquip(EquipmentRequestHandler handler)
+        // Здесь явно прописываем SDG.Unturned.EquipmentRequestHandler
+        private void OnEquip(SDG.Unturned.EquipmentRequestHandler handler)
         {
-            // Сброс западания спуска при смене оружия
             RunawayPlayers.Remove(handler.equipment.player.channel.owner.playerID.steamID);
         }
 
