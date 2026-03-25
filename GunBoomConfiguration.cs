@@ -2,55 +2,63 @@ using Rocket.API;
 using System.Collections.Generic;
 using System.Xml.Serialization;
 
-public class WeaponConfig
+namespace GunBoom
 {
-    [XmlAttribute("WeaponID")]
-    public ushort WeaponID;
-
-    [XmlAttribute("MinQuality")]
-    public byte MinQuality; // Порог прочности (например, 30%), ниже которого начинаются проблемы
-
-    // Выпадение магазина
-    public bool EnableMagDrop;
-    public float MagDropChance;
-
-    // Взрыв оружия
-    public bool EnableExplosion;
-    public float ExplosionChance;
-    public ushort ScrapItemID; // ID предмета (например, металлолома), который появится
-
-    // Западание спуска (Runaway Gun)
-    public bool EnableRunaway;
-    public float RunawayChance;
-
-    // Заклинивание (Jamming)
-    public bool EnableJam;
-    public float JamChance;
-}
-
-public class GunBoomConfiguration : IRocketPluginConfiguration
-{
-    [XmlArrayItem(ElementName = "Weapon")]
-    public List<WeaponConfig> Weapons;
-
-    public void LoadDefaults()
+    public class GunBoomConfiguration : IRocketPluginConfiguration
     {
-        Weapons = new List<WeaponConfig>
+        public string LoadMessage;
+        public List<WeaponConfig> Weapons;
+
+        public void Defaults()
         {
-            new WeaponConfig
+            LoadMessage = "GunBoom Malfunctions Loaded!";
+            Weapons = new List<WeaponConfig>
             {
-                WeaponID = 363, // Пример: Maplestrike
-                MinQuality = 25,
-                EnableMagDrop = true,
-                MagDropChance = 0.05f, // 5%
-                EnableExplosion = true,
-                ExplosionChance = 0.01f, // 1%
-                ExplosionSpawnItemID = 67, // Металлолом
-                EnableRunaway = true,
-                RunawayChance = 0.02f, // 2%
-                EnableJam = true,
-                JamChance = 0.1f // 10%
-            }
-        };
+                new WeaponConfig
+                {
+                    WeaponID = 122, // Zubeknakov
+                    MinQuality = 15,
+                    
+                    EnableExplosion = true,
+                    ExplosionChance = 0.01f,
+                    ScrapItemID = 67, // Metal Scrap
+                    
+                    EnableMagDrop = true,
+                    MagDropChance = 0.05f,
+                    
+                    EnableJam = true,
+                    JamChance = 0.10f,
+                    
+                    EnableRunaway = true,
+                    RunawayChance = 0.03f
+                }
+            };
+        }
+    }
+
+    public class WeaponConfig
+    {
+        [XmlAttribute("ID")]
+        public ushort WeaponID;
+        
+        [XmlAttribute("MinQual")]
+        public byte MinQuality;
+
+        // Взрыв
+        public bool EnableExplosion;
+        public float ExplosionChance;
+        public ushort ScrapItemID; 
+
+        // Выпадение магазина
+        public bool EnableMagDrop;
+        public float MagDropChance;
+
+        // Заклинивание
+        public bool EnableJam;
+        public float JamChance;
+
+        // Западание спуска
+        public bool EnableRunaway;
+        public float RunawayChance;
     }
 }
