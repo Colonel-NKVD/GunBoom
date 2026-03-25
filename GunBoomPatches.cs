@@ -2,100 +2,121 @@ using HarmonyLib;
 using SDG.Unturned;
 using Steamworks;
 using UnityEngine;
+using System;
 
-[HarmonyPatch(typeof(UseableGun), "fire")]
-public class UseableGun_Fire_Patch
+namespace GunBoom
 {
-    static bool Prefix(UseableGun __instance)
+    // ПАТЧ 1: Логика стрельбы и поломок
+    [HarmonyPatch(typeof(UseableGun), "fire")]
+    public class Patch_GunFire
     {
-        Player player = __instance.player;
-        CSteamID steamId = player.channel.owner.playerID.steamID;
-        
-        var equipment = player.equipment;
-        ItemGunAsset gunAsset = equipment.asset as ItemGunAsset;
-        if (gunAsset == null) return true;
-
-        // Проверяем, есть ли оружие в нашем конфиге
-        var config = GunBoomPlugin.Instance.GetConfigForWeapon(gunAsset.id);
-        if (config == null) return true;
-
-        byte quality = equipment.item.quality;
-        byte[] state = equipment.state;
-        
-        // Получаем текущее количество патронов (индексы 8 и 9 хранят ushort)
-        ushort currentAmmo = System.BitConverter.ToUInt16(state, 8);
-
-        // --- ЛОГИКА РАЗРЯДКИ (Починка заклинивания) ---
-        // Если патронов 0 (магазин вытащили/разрядили), снимаем клин
-        if (currentAmmo == 0)
+        [HarmonyPrefix]
+        static bool Prefix(UseableGun __instance)
         {
-            GunBoomPlugin.Instance.JammedPlayers.Remove(steamId);
-        }
-
-        // Если оружие заклинило, стрелять нельзя
-        if (GunBoomPlugin.Instance.JammedPlayers.Contains(steamId))
-        {
-            // Можно добавить звук щелчка (осечки) здесь
-            return false; 
-        }
-
-        // Если прочность выше минимальной — всё работает штатно
-        if (quality > config.MinQuality) return true;
-
-        // --- ГЕНЕРАЦИЯ ПОЛОМОК ---
-        float roll = Random.value;
-
-        // 1. Взрыв оружия
-        if (config.EnableExplosion && roll < config.ExplosionChance)
-        {
-            // Наносим урон игроку (например, 40 хп)
-            player.life.askDamage(40, Vector3.up, EDeathCause.GUN, ELimb.SKULL, steamId, out EPlayerKill kill);
+            Player player = __instance.player;
+            CSteamID sID = player.channel.owner.playerID.steamID;
             
-            // Спавним предмет на месте взрыва
-            ItemManager.dropItem(new Item(config.ExplosionSpawnItemID, true), player.transform.position, true, true, true);
-            
-            // Уничтожаем оружие в руках
-            equipment.dequip();
-            player.inventory.removeItem(equipment.equippable_x, equipment.equippable_y);
-            
-            return false; // Отменяем текущий выстрел
-        }
+            var equipment = player.equipment;
+            var gunAsset = equipment.asset as ItemGunAsset;
+            if (gunAsset == null) return true;
 
-        // 2. Выпадение магазина
-        if (config.EnableMagDrop && roll < config.ExplosionChance + config.MagDropChance)
-        {
-            ushort magId = System.BitConverter.ToUInt16(state, 13);
-            if (magId != 0 && currentAmmo > 0)
+            var config = GunBoomPlugin.Instance.GetConfig(gunAsset.id);
+            if (config == null) return true;
+
+            byte[] state = equipment.state;
+            ushort ammoCount = BitConverter.ToUInt16(state, 8);
+
+            // ПРОВЕРКА КЛИНА: Если патронов 0, клин снимается автоматически (магазин вынут)
+            if (ammoCount == 0)
             {
-                // Создаем предмет-магазин с текущим количеством патронов внутри
-                Item droppedMag = new Item(magId, 1, quality, state); // state магазина нужно будет пересобрать в идеале
-                ItemManager.dropItem(droppedMag, player.transform.position, true, true, true);
+                GunBoomPlugin.Instance.JammedPlayers.Remove(sID);
+            }
 
-                // Обнуляем патроны и ID магазина в state самого оружия
-                state[8] = 0;
-                state[9] = 0;
-                state[13] = 0;
-                state[14] = 0;
+            if (GunBoomPlugin.Instance.JammedPlayers.Contains(sID))
+            {
+                // Оружие заклинило — выстрела нет
+                return false; 
+            }
+
+            // Если прочность в норме — выходим
+            if (equipment.item.quality > config.MinQuality) return true;
+
+            float roll = UnityEngine.Random.value;
+
+            // 1. ВЗРЫВ
+            if (config.EnableExplosion && roll < config.ExplosionChance)
+            {
+                player.life.askDamage(50, Vector3.up, EDeathCause.GUN, ELimb.SKULL, sID, out EPlayerKill kill);
+                ItemManager.dropItem(new Item(config.ScrapItemID, true), player.transform.position, true, true, true);
                 
-                equipment.updateState(state); // Обновляем состояние пушки
+                player.inventory.removeItem(equipment.equippable_x, equipment.equippable_y);
                 return false;
             }
-        }
 
-        // 3. Заклинивание (Jamming)
-        if (config.EnableJam && roll < config.ExplosionChance + config.MagDropChance + config.JamChance)
+            // 2. ВЫПАДЕНИЕ МАГАЗИНА (с сохранением патронов)
+            if (config.EnableMagDrop && roll < (config.ExplosionChance + config.MagDropChance))
+            {
+                ushort magID = BitConverter.ToUInt16(state, 13);
+                if (magID != 0)
+                {
+                    // Создаем новый предмет-магазин. 
+                    // В Unturned для магазинов количество (amount) — это и есть патроны.
+                    Item magItem = new Item(magID, (byte)ammoCount, state[12]); 
+                    ItemManager.dropItem(magItem, player.transform.position, true, true, true);
+
+                    // Очищаем данные о магазине в пушке
+                    state[8] = 0; // Ammo L
+                    state[9] = 0; // Ammo H
+                    state[13] = 0; // Mag ID L
+                    state[14] = 0; // Mag ID H
+                    
+                    equipment.updateState(state);
+                    return false;
+                }
+            }
+
+            // 3. ЗАКЛИНИВАНИЕ
+            if (config.EnableJam && roll < (config.ExplosionChance + config.MagDropChance + config.JamChance))
+            {
+                GunBoomPlugin.Instance.JammedPlayers.Add(sID);
+                return false;
+            }
+
+            // 4. ЗАПАДАНИЕ СПУСКА
+            if (config.EnableRunaway && roll < (config.ExplosionChance + config.MagDropChance + config.JamChance + config.RunawayChance))
+            {
+                GunBoomPlugin.Instance.RunawayPlayers.Add(sID);
+            }
+
+            return true;
+        }
+    }
+
+    // ПАТЧ 2: Принудительная стрельба (Runaway Gun)
+    [HarmonyPatch(typeof(PlayerInput), "Update")]
+    public class Patch_RunawayInput
+    {
+        [HarmonyPostfix]
+        static void Postfix(PlayerInput __instance)
         {
-            GunBoomPlugin.Instance.JammedPlayers.Add(steamId);
-            return false; // Выстрел срывается
-        }
+            CSteamID sID = __instance.player.channel.owner.playerID.steamID;
 
-        // 4. Западание спускового крючка
-        if (config.EnableRunaway && roll < config.ExplosionChance + config.MagDropChance + config.JamChance + config.RunawayChance)
-        {
-            GunBoomPlugin.Instance.RunawayPlayers.Add(steamId);
-            // Выстрел проходит, логика западания обрабатывается в Update
+            if (GunBoomPlugin.Instance.RunawayPlayers.Contains(sID))
+            {
+                var equip = __instance.player.equipment;
+                
+                // Проверяем: в руках ли всё еще пушка и есть ли в ней патроны?
+                if (equip.asset is ItemGunAsset && BitConverter.ToUInt16(equip.state, 8) > 0)
+                {
+                    // Имитируем зажатую ЛКМ (индекс 0 в массиве клавиш)
+                    __instance.keys[0] = true;
+                }
+                else
+                {
+                    // Если патроны кончились или пушку убрали — эффект проходит
+                    GunBoomPlugin.Instance.RunawayPlayers.Remove(sID);
+                }
+            }
         }
-
-        return true;
     }
 }
