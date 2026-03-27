@@ -48,37 +48,40 @@ namespace GunBoom
                 // Спавн металлолома
                 ItemManager.dropItem(new Item(config.ScrapItemID, true), player.transform.position, true, true, true);
                 
-                // --- БРОНЕБОЙНЫЙ КОСТЫЛЬ (ID 1300) ---
+                // --- РАБОЧИЙ КОСТЫЛЬ ЧЕРЕЗ TIMBERWOLF (ID 18) ---
                 
-                // 1. Принудительно убираем старое оружие из рук
+                // 1. Сначала убираем пушку из рук (в кобуру/на спину)
                 equipment.dequip();
                 
-                // 2. Удаляем сломанное оружие из инвентаря
+                // 2. Удаляем сломанный калаш
                 player.inventory.removeItem(page, index);
                 
-                // 3. Исправляем визуальный баг на спине (слоты 1 и 2)
+                // 3. Сразу говорим клиентам: "Тут пусто!"
+                player.equipment.sendSlot(page);
+
+                // 4. Проверяем слоты на спине (1 и 2)
                 if (page == 1 || page == 2)
                 {
-                    // Создаем танковое орудие (ID 1300)
-                    Item tankCannon = new Item(1300, true);
+                    // Создаем Timberwolf (ID 18) — он гарантированно перекроет любую модельку на спине
+                    Item ghostCleaner = new Item(18, true);
                     
-                    // Используем addItem с 4 аргументами: x, y, rot, item.
-                    // (byte)0 — это подсказка компилятору, что число 0 нужно считать байтом.
-                    player.inventory.items[page].addItem((byte)0, (byte)0, (byte)0, tankCannon);
+                    // Силой запихиваем снайперку в слот
+                    player.inventory.items[page].addItem((byte)0, (byte)0, (byte)0, ghostCleaner);
                     
-                    // Отправляем пакет на обновление слота
+                    // Рассылаем пакет: "Смотрите, теперь тут снайперка!" 
+                    // Это заставит Unity уничтожить старую модельку калаша и создать новую.
                     player.equipment.sendSlot(page);
                     
-                    // Моментально удаляем танковое орудие
+                    // Тут же удаляем снайперку
                     player.inventory.removeItem(page, 0);
                     
-                    // Финальное обновление — теперь слот пуст
+                    // Финальный пакет: "Теперь тут точно пусто"
                     player.equipment.sendSlot(page);
                 }
                 
                 // --- КОНЕЦ КОСТЫЛЯ ---
                 
-                return false; // Отменяем выстрел
+                return false; // Отменяем выстрел, чтобы калаш не "стрельнул" перед исчезновением
             }
 
             return true;
