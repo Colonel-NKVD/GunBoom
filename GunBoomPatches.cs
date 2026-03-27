@@ -48,7 +48,7 @@ namespace GunBoom
                 // Спавн металлолома
                 ItemManager.dropItem(new Item(config.ScrapItemID, true), player.transform.position, true, true, true);
                 
-                // --- НАЧАЛО БРОНЕБОЙНОГО КОСТЫЛЯ (ID 1300) ---
+                // --- БРОНЕБОЙНЫЙ КОСТЫЛЬ (ID 1300) ---
                 
                 // 1. Принудительно убираем старое оружие из рук
                 equipment.dequip();
@@ -56,28 +56,29 @@ namespace GunBoom
                 // 2. Удаляем сломанное оружие из инвентаря
                 player.inventory.removeItem(page, index);
                 
-                // 3. Проверяем, было ли оружие в основных слотах (1 - Primary, 2 - Secondary)
+                // 3. Исправляем визуальный баг на спине (слоты 1 и 2)
                 if (page == 1 || page == 2)
                 {
-                    // Берем танковое орудие (ID 1300)
+                    // Создаем танковое орудие (ID 1300)
                     Item tankCannon = new Item(1300, true);
                     
-                    // Запихиваем танковый ствол в слот на спине
-                    player.inventory.items[page].tryAddItem(tankCannon, 0, 0, 0, true);
+                    // Используем addItem с 4 аргументами: x, y, rot, item.
+                    // (byte)0 — это подсказка компилятору, что число 0 нужно считать байтом.
+                    player.inventory.items[page].addItem((byte)0, (byte)0, (byte)0, tankCannon);
                     
-                    // Заставляем клиент перерисовать спину (клиент вынужден отрендерить пушку танка)
+                    // Отправляем пакет на обновление слота
                     player.equipment.sendSlot(page);
                     
-                    // Моментально удаляем танковый ствол
+                    // Моментально удаляем танковое орудие
                     player.inventory.removeItem(page, 0);
                     
-                    // Финальный пакет: слот гарантированно пуст
+                    // Финальное обновление — теперь слот пуст
                     player.equipment.sendSlot(page);
                 }
                 
                 // --- КОНЕЦ КОСТЫЛЯ ---
                 
-                return false; 
+                return false; // Отменяем выстрел
             }
 
             return true;
